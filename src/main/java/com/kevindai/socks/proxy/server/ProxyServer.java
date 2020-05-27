@@ -30,11 +30,13 @@ public class ProxyServer extends AbstractServer {
 
     @Override
     public void start() {
-        this.serverBootstrap.group(this.bossGroup,this.workerGroup)
-                .option(ChannelOption.SO_REUSEADDR,true)
+        this.serverBootstrap.group(this.bossGroup, this.workerGroup)
+                .option(ChannelOption.SO_BACKLOG, 1024)
+                .option(ChannelOption.SO_REUSEADDR, true)
+                .option(ChannelOption.SO_KEEPALIVE, false)
+                .childOption(ChannelOption.TCP_NODELAY, true)
                 .handler(new LoggingHandler(LogLevel.INFO))
                 .localAddress(new InetSocketAddress(this.port))
-                .childOption(ChannelOption.TCP_NODELAY,true)
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     protected void initChannel(SocketChannel socketChannel) throws Exception {
@@ -47,7 +49,7 @@ public class ProxyServer extends AbstractServer {
                 });
 
         this.channelFuture = this.serverBootstrap.bind(this.port);
-        logger.info("server start bind port :{}",this.port);
+        logger.info("server start bind port :{}", this.port);
     }
 
     @Override

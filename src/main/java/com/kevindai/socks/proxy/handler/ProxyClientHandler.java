@@ -7,6 +7,7 @@ import com.kevindai.socks.proxy.util.ReferenceCountedUtils;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
@@ -41,7 +42,8 @@ public class ProxyClientHandler extends ChannelInboundHandlerAdapter {
         try {
             if (channel.isActive()) {
                 if (msg instanceof HttpResponse) {
-                    HttpResponse response = (HttpResponse) msg;
+                    FullHttpResponse response = (FullHttpResponse)msg;
+                    response.retain();
                     if (response.status().code() != HttpResponseStatus.OK.code() || HttpUtil.isKeepAlive(response)) {
                         BizUtils.closeOnFlush(channel);
                     }

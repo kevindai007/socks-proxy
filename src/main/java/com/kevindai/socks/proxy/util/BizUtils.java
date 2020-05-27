@@ -20,6 +20,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @Author daiwenkai
@@ -37,16 +39,61 @@ public class BizUtils {
 
     static {
         if (Epoll.isAvailable()) {
-            bossGroup = new EpollEventLoopGroup(1);
-            workerGroup = new EpollEventLoopGroup(BizConstants.THREAD_NUM);
+            bossGroup = new EpollEventLoopGroup(1, new ThreadFactory() {
+                private AtomicInteger threadIndex = new AtomicInteger(0);
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, String.format("NettyEPOLLBoss_%d", this.threadIndex.incrementAndGet()));
+                }
+            });
+            workerGroup = new EpollEventLoopGroup(BizConstants.THREAD_NUM, new ThreadFactory() {
+                private AtomicInteger threadIndex = new AtomicInteger(0);
+                private int threadTotal = BizConstants.THREAD_NUM;
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, String.format("NettyServerEPOLLWorker_%d_%d", threadTotal, this.threadIndex.incrementAndGet()));
+                }
+            });
             LOGGER.info("using epoll ");
         } else if (KQueue.isAvailable()) {
-            bossGroup = new KQueueEventLoopGroup(1);
-            workerGroup = new KQueueEventLoopGroup(BizConstants.THREAD_NUM);
+            bossGroup = new KQueueEventLoopGroup(1, new ThreadFactory() {
+                private AtomicInteger threadIndex = new AtomicInteger(0);
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, String.format("NettyKQueueBoss_%d", this.threadIndex.incrementAndGet()));
+                }
+            });
+            workerGroup = new KQueueEventLoopGroup(BizConstants.THREAD_NUM, new ThreadFactory() {
+                private AtomicInteger threadIndex = new AtomicInteger(0);
+                private int threadTotal = BizConstants.THREAD_NUM;
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, String.format("NettyKQueueWorker_%d_%d", threadTotal, this.threadIndex.incrementAndGet()));
+                }
+            });
             LOGGER.info("using kqueue");
         } else {
-            bossGroup = new NioEventLoopGroup(1);
-            workerGroup = new NioEventLoopGroup(BizConstants.THREAD_NUM);
+            bossGroup = new NioEventLoopGroup(1, new ThreadFactory() {
+                private AtomicInteger threadIndex = new AtomicInteger(0);
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, String.format("NettyNIOBoss_%d", this.threadIndex.incrementAndGet()));
+                }
+            });
+            workerGroup = new NioEventLoopGroup(BizConstants.THREAD_NUM, new ThreadFactory() {
+                private AtomicInteger threadIndex = new AtomicInteger(0);
+                private int threadTotal = BizConstants.THREAD_NUM;
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, String.format("NettyNIOWorker_%d_%d", threadTotal, this.threadIndex.incrementAndGet()));
+                }
+            });
             LOGGER.info("using nio");
 
         }

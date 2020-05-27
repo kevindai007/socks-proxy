@@ -46,6 +46,7 @@ public class ProxyServerHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
 
         ChannelManager channelManager = SpringContextManager.getBean(ChannelManager.class);
+        // http请求、以及Https的第一次连接会被转化为FullHttpRequest,如果不是这标识是https协议简历第一次连接后后续的请求
         if (msg instanceof FullHttpRequest) {
             FullHttpRequest fullHttpRequest = (FullHttpRequest) msg;
             Pair<String, Integer> pair = RequestUtils.parseRemoteHostAndPort(fullHttpRequest);
@@ -65,6 +66,7 @@ public class ProxyServerHandler extends ChannelInboundHandlerAdapter {
 
 
             if (HttpMethod.CONNECT.name().equalsIgnoreCase(fullHttpRequest.method().name())) {
+                //https第一次连接，直接返回成功
                 HttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
                 ctx.writeAndFlush(response);
 
@@ -73,6 +75,7 @@ public class ProxyServerHandler extends ChannelInboundHandlerAdapter {
 
                 ReferenceCountedUtils.release(ctx);
             } else {
+                //http请求直接返回响应
                 HttpHeaders headers = fullHttpRequest.headers();
                 RequestUtils.removeHeaders(headers);
 
@@ -82,17 +85,64 @@ public class ProxyServerHandler extends ChannelInboundHandlerAdapter {
 
 
                 createConnection(ctx, fullHttpRequest, host, port, urlStr);
-
-
-                System.out.println("wait");
             }
 
+
+        }else{
+            //https建立连接之后的请求会走以下逻辑
+            String host = ctx.channel().attr(ChannelAttributeKeyConstants.REQUEST_HOST_KEY).get();
+            Integer port = ctx.channel().attr(ChannelAttributeKeyConstants.REQUEST_PORT_KEY).get();
+            if (StringUtils.isNotBlank(host) && port != null) {
+                if (port != 443) {
+                    //有些Https的端口不是443
+                    logger.warn("https request with unusual port! host: {}, port: {}", host, port);
+                    ctx.channel().attr(ChannelAttributeKeyConstants.REQUEST_PORT_KEY).set(port);
+                }
+                logger.info("handle https request, get host: {}, port: {}", host, port);
+                createConnectionDirectly(ctx, msg, host, port);
+            } else {
+                logger.error("unknown msg type. {} close current channel.", msg.getClass().getName());
+                ReferenceCountedUtils.release(msg);
+                ctx.close();
+            }
 
         }
 
 
 //        super.channelRead(ctx, msg);
     }
+
+    private void createConnectionDirectly(ChannelHandlerContext ctx, Object msg, String host, int port) {
+        Channel inboundChannel = ctx.channel();
+        Bootstrap httpsBootstrap = new Bootstrap();
+        httpsBootstrap.group(inboundChannel.eventLoop())
+                .channel(inboundChannel.getClass())
+                .option(ChannelOption.SO_KEEPALIVE, true)
+                .option(ChannelOption.TCP_NODELAY, true)
+                .handler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) throws Exception {
+                        ChannelPipeline pipeline = ch.pipeline();
+                        pipeline.addLast("readTimeout", new ReadTimeoutHandler(BizConstants.MAX_IDLE_TIMEOUT));
+                        pipeline.addLast(new ProxyRelayHandler(inboundChannel));
+                    }
+                });
+        ChannelFuture cf = httpsBootstrap.connect(host, port);
+        cf.addListener((ChannelFutureListener) future -> {
+            if (future.isSuccess()) {
+                Channel outboundChannel = future.channel();
+                outboundChannel.writeAndFlush(msg);
+                ctx.pipeline().remove(this);
+                ctx.pipeline().addLast(new ProxyRelayHandler(future.channel()));
+            } else {
+                logger.error("[https] can not connect to remote server! host: {}," +
+                        " port: {}, error: {}", host, port, future.cause().getMessage());
+                ReferenceCountedUtils.release(msg);
+                ctx.close();
+            }
+        });
+    }
+
 
     private void createConnection(ChannelHandlerContext ctx, FullHttpRequest fullHttpRequest, String host, Integer port, String urlStr) {
         logger.info("create a new channel,connect to host:{},port :{}", host, port);
