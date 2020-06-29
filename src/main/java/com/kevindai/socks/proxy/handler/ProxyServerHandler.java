@@ -46,7 +46,7 @@ public class ProxyServerHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
 
         ChannelManager channelManager = SpringContextManager.getBean(ChannelManager.class);
-        // http请求、以及Https的第一次连接会被转化为FullHttpRequest,如果不是这标识是https协议简历第一次连接后后续的请求
+        // http请求、以及Https的第一次连接会被转化为FullHttpRequest,如果不是这标识是https协议建立第一次连接后后续的请求
         if (msg instanceof FullHttpRequest) {
             FullHttpRequest fullHttpRequest = (FullHttpRequest) msg;
             Pair<String, Integer> pair = RequestUtils.parseRemoteHostAndPort(fullHttpRequest);

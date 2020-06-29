@@ -1,6 +1,7 @@
 package com.kevindai.socks.proxy.handler;
 
 import com.kevindai.socks.proxy.util.ReferenceCountedUtils;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -27,8 +28,12 @@ public class ProxyRelayHandler extends ChannelInboundHandlerAdapter {
         try {
             if (channel.isActive()) {
                 channel.writeAndFlush(msg).addListener((ChannelFutureListener) future -> {
-                    if (!future.isSuccess()){
-                        log.info("通道id:{},https,向目标发送后续消息失败.e:{}", channel.id(), future.cause());
+                    if (future.isSuccess()) {
+                        // was able to flush out data, start to read the next chunk
+                        ctx.channel().read();
+                    } else {
+                        log.info("channel id:{},https,send response to target error.e:{}", channel.id(), future.cause());
+                        future.channel().close();
                     }
                 });
             } else {
@@ -51,5 +56,18 @@ public class ProxyRelayHandler extends ChannelInboundHandlerAdapter {
         channel.close();
         ctx.close();
         MDC.clear();
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) {
+        if (channel != null) {
+            closeOnFlush(channel);
+        }
+    }
+
+    static void closeOnFlush(Channel ch) {
+        if (ch.isActive()) {
+            ch.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
+        }
     }
 }
